@@ -11,7 +11,8 @@ import {
   BarChart3, 
   Settings,
   HelpCircle,
-  User
+  User,
+  Server
 } from "lucide-react";
 
 const navigation = [
@@ -19,6 +20,7 @@ const navigation = [
   { name: "Lead Inbox", href: "/dashboard/leads", icon: Inbox },
   { name: "Accounts", href: "/dashboard/accounts", icon: Building2 },
   { name: "Dossiers", href: "/dashboard/dossiers", icon: FileText },
+  { name: "Logs", href: "/dashboard/logs", icon: Server },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
 ];
 

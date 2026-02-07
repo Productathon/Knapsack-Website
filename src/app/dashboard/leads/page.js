@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { 
   Search, Filter, Eye, MoreHorizontal, X, Phone, Mail, Calendar, 
   CheckCircle2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp,
@@ -9,53 +10,75 @@ import {
 import { cn } from "@/lib/utils";
 
 const statusOptions = ["New", "Contacted", "Qualified", "Closed"];
-const industryOptions = ["Steel Manufacturing", "Transportation", "Construction", "Chemicals", "Logistics", "Oil & Gas", "Infrastructure", "Technology"];
+const industryOptions = ["Technology", "Finance", "Healthcare", "Retail", "Energy", "Manufacturing", "Logistics", "Oil & Gas", "Steel Manufacturing", "Transportation", "Construction"];
 const companySizeOptions = ["All", "Small", "Medium", "Large"];
 const confidenceOptions = ["All", "High", "Medium", "Low"];
 
 export default function LeadsPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <LeadsContent />
+    </Suspense>
+  );
+}
+
+function LeadsContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Initialize state from URL params if present
+  const [filters, setFilters] = useState(() => {
+    const params = searchParams;
+    return {
+      industries: params.get('industry') ? params.get('industry').split(',') : [],
+      scoreRange: [
+        params.get('minScore') ? Number(params.get('minScore')) : 0, 
+        params.get('maxScore') ? Number(params.get('maxScore')) : 100
+      ],
+      confidence: params.get('confidence') || "All",
+      statuses: params.get('status') ? params.get('status').split(',') : [],
+      companySize: params.get('companySize') || "All",
+      location: params.get('location') || "",
+      lastUpdated: params.get('lastUpdated') || "All",
+      keyword: params.get('search') || ""
+    };
+  });
+
+  // Sync filters to URL
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (filters.industries.length) params.set('industry', filters.industries.join(','));
+    if (filters.statuses.length) params.set('status', filters.statuses.join(','));
+    if (filters.scoreRange[0] !== 0) params.set('minScore', filters.scoreRange[0]);
+    if (filters.scoreRange[1] !== 100) params.set('maxScore', filters.scoreRange[1]);
+    if (filters.keyword) params.set('search', filters.keyword);
+    if (filters.confidence !== 'All') params.set('confidence', filters.confidence);
+    if (filters.companySize !== 'All') params.set('companySize', filters.companySize);
+    if (filters.location) params.set('location', filters.location);
+    if (filters.lastUpdated !== 'All') params.set('lastUpdated', filters.lastUpdated);
+
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }, [filters, router]);
+
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(""); // Kept for local UI if needed, but filters.keyword drives backend
 
-  // Fetch leads from backend
+  // Handle 'view' query param to auto-open lead details
   useEffect(() => {
-    const fetchLeads = async () => {
-      try {
-        const res = await fetch('http://127.0.0.1:5001/api/leads');
-        if (!res.ok) throw new Error("Connection Failed");
-        const data = await res.json();
-        
-        if (data.success) {
-          const formattedLeads = data.data.map(lead => ({
-            id: lead._id,
-            name: lead.company,
-            industry: lead.industry || "Technology", 
-            score: lead.matchScore,
-            confidence: lead.matchScore > 85 ? "High" : (lead.matchScore > 70 ? "Medium" : "Low"),
-            status: lead.status.charAt(0).toUpperCase() + lead.status.slice(1),
-            reason: "AI Signal Detected",
-            source: "CRM Backend",
-            product: "B2B Solutions",
-            companySize: lead.companySize || "Medium",
-            location: lead.location || "International",
-            lastUpdated: new Date(lead.createdAt || lead.lastUpdated)
-          }));
-          setLeads(formattedLeads);
-        } else {
-          setError("Data invalid");
-        }
-      } catch (err) {
-        console.error("Fetch error:", err);
-        setError("Could not connect to backend (127.0.0.1:5001)");
-      } finally {
-        setLoading(false);
+    const viewId = searchParams.get('view');
+    if (viewId && leads.length > 0) {
+      const leadToView = leads.find(l => l.id === viewId);
+      if (leadToView) {
+        handleView(leadToView);
+        // Clear the param after opening so it doesn't reopen on refresh/nav
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete('view');
+        router.replace(`?${newParams.toString()}`, { scroll: false });
       }
-    };
-
-    fetchLeads();
-  }, []);
+    }
+  }, [searchParams, leads, router]);
 
   const [selectedLead, setSelectedLead] = useState(null);
   const [openMenuId, setOpenMenuId] = useState(null);
@@ -63,16 +86,6 @@ export default function LeadsPage() {
   
   // Filter panel state
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(true);
-  const [filters, setFilters] = useState({
-    industries: [],
-    scoreRange: [60, 100],
-    confidence: "All",
-    statuses: [],
-    companySize: "All",
-    location: "",
-    lastUpdated: "All",
-    keyword: ""
-  });
   
   // Bulk selection state
   const [selectedLeads, setSelectedLeads] = useState([]);
@@ -84,44 +97,65 @@ export default function LeadsPage() {
     { id: 2, name: "New High Priority", filters: { industries: [], scoreRange: [80, 100], confidence: "High", statuses: ["New"], companySize: "All", location: "", lastUpdated: "Today", keyword: "" } },
   ]);
 
-  // Filter logic
-  const filteredLeads = useMemo(() => {
-    return leads.filter((lead) => {
-      const matchesSearch = lead.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            lead.industry.toLowerCase().includes(searchQuery.toLowerCase());
+  // Fetch leads from backend
+  const fetchLeads = async (currentFilters = filters) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
       
-      const matchesIndustry = filters.industries.length === 0 || filters.industries.includes(lead.industry);
-      const matchesScore = lead.score >= filters.scoreRange[0] && lead.score <= filters.scoreRange[1];
-      const matchesConfidence = filters.confidence === "All" || lead.confidence === filters.confidence;
-      const matchesStatus = filters.statuses.length === 0 || filters.statuses.includes(lead.status);
-      const matchesCompanySize = filters.companySize === "All" || lead.companySize === filters.companySize;
-      const matchesLocation = !filters.location || lead.location.toLowerCase().includes(filters.location.toLowerCase());
-      const matchesKeyword = !filters.keyword || 
-        lead.name.toLowerCase().includes(filters.keyword.toLowerCase()) ||
-        lead.industry.toLowerCase().includes(filters.keyword.toLowerCase());
-      
-      // Last updated filter
-      let matchesLastUpdated = true;
-      if (filters.lastUpdated !== "All") {
-        const today = new Date();
-        const leadDate = new Date(lead.lastUpdated);
-        const daysDiff = Math.floor((today - leadDate) / (1000 * 60 * 60 * 24));
-        
-        if (filters.lastUpdated === "Today") {
-          matchesLastUpdated = daysDiff === 0;
-        } else if (filters.lastUpdated === "Last 7 days") {
-          matchesLastUpdated = daysDiff <= 7;
-        } else if (filters.lastUpdated === "Last 30 days") {
-          matchesLastUpdated = daysDiff <= 30;
-        }
-      }
-      
-      return matchesSearch && matchesIndustry && matchesScore && matchesConfidence && 
-             matchesStatus && matchesCompanySize && matchesLocation && matchesKeyword && matchesLastUpdated;
-    });
-  }, [leads, searchQuery, filters]);
+      if (currentFilters.industries.length) params.append('industry', currentFilters.industries.join(','));
+      if (currentFilters.statuses.length) params.append('status', currentFilters.statuses.join(','));
+      if (currentFilters.scoreRange[0] !== 0) params.append('minScore', currentFilters.scoreRange[0]);
+      if (currentFilters.scoreRange[1] !== 100) params.append('maxScore', currentFilters.scoreRange[1]);
+      if (currentFilters.keyword) params.append('search', currentFilters.keyword);
+      if (currentFilters.confidence !== 'All') params.append('confidence', currentFilters.confidence);
+      if (currentFilters.companySize !== 'All') params.append('companySize', currentFilters.companySize);
+      if (currentFilters.location) params.append('location', currentFilters.location);
+      if (currentFilters.lastUpdated !== 'All') params.append('lastUpdated', currentFilters.lastUpdated);
 
-  // Sort: High score + New first
+      const res = await fetch(`http://127.0.0.1:5001/api/leads?${params.toString()}`);
+      if (!res.ok) throw new Error("Connection Failed");
+      const data = await res.json();
+      
+      if (data.success) {
+        const formattedLeads = data.data.map(lead => ({
+          id: lead._id,
+          name: lead.company,
+          industry: lead.industry || "Technology", 
+          score: lead.matchScore,
+          confidence: lead.matchScore > 85 ? "High" : (lead.matchScore > 70 ? "Medium" : "Low"),
+          status: lead.status.charAt(0).toUpperCase() + lead.status.slice(1),
+          reason: "AI Signal Detected",
+          source: "CRM Backend",
+          product: "B2B Solutions",
+          companySize: lead.companySize || "Medium",
+          location: lead.location || "International",
+          lastUpdated: new Date(lead.createdAt || lead.lastUpdated)
+        }));
+        setLeads(formattedLeads);
+      } else {
+        setError("Data invalid");
+      }
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError("Could not connect to backend (127.0.0.1:5001)");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Debounce search/filter fetch
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchLeads(filters);
+    }, 500); // 500ms debounce
+    return () => clearTimeout(timer);
+  }, [filters]);
+
+  // Use leads directly as they are now filtered from backend
+  const filteredLeads = leads;
+
+  // Sort: High score + New first (can also be moved to backend if pagination needed)
   const sortedLeads = useMemo(() => {
     return [...filteredLeads].sort((a, b) => {
       if (a.status === "New" && b.status !== "New") return -1;
@@ -135,17 +169,63 @@ export default function LeadsPage() {
     return sortedLeads.slice(0, 3).map(lead => lead.id);
   }, [sortedLeads]);
 
-  const updateStatus = (id, newStatus) => {
-    setLeads(leads.map(lead => lead.id === id ? { ...lead, status: newStatus } : lead));
-    if (selectedLead?.id === id) {
-      setSelectedLead({ ...selectedLead, status: newStatus });
+  const updateStatus = async (id, newStatus) => {
+    try {
+      // Optimistic update
+      setLeads(leads.map(lead => lead.id === id ? { ...lead, status: newStatus } : lead));
+      if (selectedLead?.id === id) {
+        setSelectedLead({ ...selectedLead, status: newStatus });
+      }
+
+      await fetch(`http://127.0.0.1:5001/api/leads/${id}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+    } catch (err) {
+      console.error("Failed to update status:", err);
+      // Revert optimization would go here in a full app
     }
   };
 
-  const handleView = (lead) => {
-    setSelectedLead(lead);
+  const handleView = async (lead) => {
+    // Show loading state immediately with partial data
+    setSelectedLead({ ...lead, loading: true });
     setFeedbackSubmitted(false);
     setOpenMenuId(null);
+
+    try {
+      const res = await fetch(`http://127.0.0.1:5001/api/leads/${lead.id}`);
+      if (!res.ok) throw new Error("Failed to fetch details");
+      const data = await res.json();
+      
+      if (data.success) {
+        const fullLead = data.data;
+        // Merge full details with existing formatting logic
+        setSelectedLead({
+          ...lead,
+          ...fullLead,
+          id: fullLead._id,
+          name: fullLead.company, // Ensure consistency
+          industry: fullLead.industry,
+          score: fullLead.matchScore,
+          confidence: fullLead.matchScore > 85 ? "High" : (fullLead.matchScore > 70 ? "Medium" : "Low"),
+          status: fullLead.status.charAt(0).toUpperCase() + fullLead.status.slice(1),
+          // Keep these if not in backend yet, or map from backend if available
+          reason: fullLead.reason || "AI Signal Detected",
+          source: fullLead.source || "CRM Backend",
+          product: fullLead.product || "B2B Solutions",
+          feedback: fullLead.feedback || [],
+          loading: false
+        });
+      }
+    } catch (err) {
+      console.error("Error fetching lead details:", err);
+      // Keep showing partial data but maybe add an error flag if needed
+      setSelectedLead(prev => ({ ...prev, loading: false }));
+    }
   };
 
   const handleMenuAction = (action, lead) => {
@@ -161,7 +241,7 @@ export default function LeadsPage() {
     }
   };
 
-  const handleBulkAction = (action) => {
+  const handleBulkAction = async (action) => {
     if (selectedLeads.length === 0) return;
     
     // Determine the new status based on action
@@ -171,7 +251,7 @@ export default function LeadsPage() {
     else if (action === "closed") newStatus = "Closed";
     else return;
     
-    // Update all selected leads at once using functional state update
+    // Optimistic update
     setLeads(prevLeads => 
       prevLeads.map(lead => 
         selectedLeads.includes(lead.id) 
@@ -183,6 +263,23 @@ export default function LeadsPage() {
     // Update selectedLead if it's one of the updated leads
     if (selectedLead && selectedLeads.includes(selectedLead.id)) {
       setSelectedLead({ ...selectedLead, status: newStatus });
+    }
+
+    // Call backend for each selected lead
+    try {
+      await Promise.all(selectedLeads.map(id => 
+        fetch(`http://127.0.0.1:5001/api/leads/${id}/status`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ status: newStatus }),
+        })
+      ));
+      // Refresh to ensure sync
+      fetchLeads(filters);
+    } catch (err) {
+      console.error("Failed to update bulk status:", err);
     }
     
     // Clear selection
@@ -239,7 +336,7 @@ export default function LeadsPage() {
 
   const removeFilter = (filterType) => {
     if (filterType === 'industries') setFilters({ ...filters, industries: [] });
-    else if (filterType === 'scoreRange') setFilters({ ...filters, scoreRange: [60, 100] });
+    else if (filterType === 'scoreRange') setFilters({ ...filters, scoreRange: [0, 100] });
     else if (filterType === 'confidence') setFilters({ ...filters, confidence: "All" });
     else if (filterType === 'statuses') setFilters({ ...filters, statuses: [] });
     else if (filterType === 'companySize') setFilters({ ...filters, companySize: "All" });
@@ -936,12 +1033,36 @@ export default function LeadsPage() {
                   <div className="space-y-3">
                     {["Signal Validated", "Product Match Improved", "Confidence Reweighted"].map((item) => (
                       <label key={item} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors">
-                        <input type="checkbox" className="h-4 w-4 rounded border-border text-foreground focus:ring-ring" />
+                        <input 
+                          type="checkbox" 
+                          checked={selectedLead.feedback?.includes(item)}
+                          onChange={(e) => {
+                            const currentFeedback = selectedLead.feedback || [];
+                            const newFeedback = e.target.checked
+                              ? [...currentFeedback, item]
+                              : currentFeedback.filter(f => f !== item);
+                            setSelectedLead({ ...selectedLead, feedback: newFeedback });
+                          }}
+                          className="h-4 w-4 rounded border-border text-foreground focus:ring-ring" 
+                        />
                         <span className="text-sm font-medium text-foreground">{item}</span>
                       </label>
                     ))}
                     <button
-                      onClick={() => setFeedbackSubmitted(true)}
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`http://127.0.0.1:5001/api/leads/${selectedLead.id}/feedback`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ feedback: selectedLead.feedback || [] })
+                          });
+                          if (res.ok) {
+                            setFeedbackSubmitted(true);
+                          }
+                        } catch (err) {
+                          console.error("Failed to submit feedback", err);
+                        }
+                      }}
                       className="w-full mt-4 rounded-lg bg-foreground py-2.5 text-sm font-semibold text-background hover:opacity-90 transition-opacity"
                     >
                       Submit Feedback

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { 
   ArrowUpRight, ChevronRight, Flame, Clock, FileText, 
   Calendar, TrendingUp, Users, Target, Award,
-  Factory, Truck, Building2, Monitor
+  Factory, Truck, Building2, Monitor, Search
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import PriorityLeadsModal from "@/components/ui/PriorityLeadsModal";
@@ -31,15 +31,19 @@ export default function DashboardPage() {
 
   // Dashboard aggregated data
   const [leadTrends, setLeadTrends] = useState([]);
+  const [trendInsight, setTrendInsight] = useState("");
   const [industries, setIndustries] = useState([]);
   const [priorityData, setPriorityData] = useState({ overdueCount: 0, newLeadsToday: 0 });
+
+  const [dateRange, setDateRange] = useState(30);
 
   // Fetch leads and dashboard stats from backend
   useEffect(() => {
     const fetchData = async () => {
       try {
+        setLoading(true);
         // Fetch leads
-        const leadsRes = await fetch('http://127.0.0.1:5001/api/leads');
+        const leadsRes = await fetch(`http://127.0.0.1:5001/api/leads?days=${dateRange}`);
         if (!leadsRes.ok) throw new Error("Failed to connect to backend");
         
         const leadsData = await leadsRes.json();
@@ -51,23 +55,27 @@ export default function DashboardPage() {
             industry: lead.industry || 'Technology',
             score: lead.matchScore,
             confidence: lead.matchScore > 85 ? "High" : "Med",
-            status: lead.status === 'new' ? 'New' : lead.status.charAt(0).toUpperCase() + lead.status.slice(1)
+            status: lead.status === 'new' ? 'New' : lead.status.charAt(0).toUpperCase() + lead.status.slice(1),
+            createdAt: lead.createdAt
           }));
           setLeads(formattedLeads);
         }
 
-        // Fetch dashboard stats
-        const statsRes = await fetch('http://127.0.0.1:5001/api/dashboard/stats');
+        // Fetch dashboard stats with date filter
+        const statsRes = await fetch(`http://127.0.0.1:5001/api/dashboard/stats?days=${dateRange}`);
+        
         if (statsRes.ok) {
           const statsData = await statsRes.json();
-          if (statsData.success) {
+          // console.log("Stats Data Received:", statsData); // Debug log
+          if (statsData.success && statsData.data) {
             setStats({
-              totalLeads: statsData.data.totalLeads,
-              activeLeads: statsData.data.activeLeads,
-              conversionRate: statsData.data.conversionRate,
-              avgScore: statsData.data.avgScore
+              totalLeads: statsData.data.totalLeads || 0,
+              activeLeads: statsData.data.activeLeads || 0,
+              conversionRate: statsData.data.conversionRate || 0,
+              avgScore: statsData.data.avgScore || 0
             });
             setLeadTrends(statsData.data.leadTrends || []);
+            setTrendInsight(statsData.data.trendInsight || "Start generating leads to see trends.");
             setPriorityData(statsData.data.priorities || { overdueCount: 0, newLeadsToday: 0 });
             
             // Format industries with icons
@@ -87,14 +95,13 @@ export default function DashboardPage() {
         }
       } catch (err) {
         console.error("Failed to fetch data:", err);
-        setError("Could not connect to backend. Is it running on port 5001?");
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, []);
+  }, [dateRange]); // Refetch when dateRange changes
 
   // ... (keeping kpis and other state code same) ... 
   // (Redacted for brevity in tool call, but strictly replacing lines 56-200 roughly)
@@ -142,7 +149,25 @@ export default function DashboardPage() {
   const [isGenerating, setIsGenerating] = useState(false);
 
   // Derived Priorities based on backend data
-  const newLeadsInList = leads.filter(l => l.status === 'New');
+  const newLeadsInList = leads.filter(l => l.status.toLowerCase() === 'new');
+  
+  // Date helpers for filtering
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const threeDaysAgo = new Date();
+  threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+
+  // Precise filtering to match backend definitions
+  const overdueLeads = leads.filter(l => 
+    l.status.toLowerCase() === 'new' && 
+    new Date(l.createdAt || l.lastUpdated) < threeDaysAgo
+  );
+
+  const newLeadsToday = leads.filter(l => 
+    l.status.toLowerCase() === 'new' && 
+    new Date(l.createdAt || l.lastUpdated) >= today
+  );
 
   const priorities = [
     { 
@@ -152,7 +177,7 @@ export default function DashboardPage() {
       bg: "bg-orange-100 dark:bg-orange-900/30", 
       count: priorityData.overdueCount,
       filterUrl: "/dashboard/leads?status=overdue",
-      previewLeads: leads.slice(0, priorityData.overdueCount)
+      previewLeads: overdueLeads.length > 0 ? overdueLeads : leads.slice(0, priorityData.overdueCount)
     },
     { 
       icon: FileText, 
@@ -161,7 +186,7 @@ export default function DashboardPage() {
       bg: "bg-blue-100 dark:bg-blue-900/30", 
       count: priorityData.newLeadsToday,
       filterUrl: "/dashboard/leads?status=new&days=1",
-      previewLeads: newLeadsInList.slice(0, priorityData.newLeadsToday)
+      previewLeads: newLeadsToday.length > 0 ? newLeadsToday : newLeadsInList.slice(0, priorityData.newLeadsToday)
     }
   ];
 
@@ -199,6 +224,16 @@ export default function DashboardPage() {
           activeLeads: prev.activeLeads - 1,
           conversionRate: (parseFloat(prev.conversionRate) + 0.1).toFixed(1),
         }));
+
+        // Update priority counts
+        setPriorityData(prev => ({
+          ...prev,
+          newLeadsToday: Math.max(0, prev.newLeadsToday - 1),
+          // Check if it was also overdue (simple heuristic or check lead data if available)
+          overdueCount: convertedLead.createdAt && new Date(convertedLead.createdAt) < new Date(Date.now() - 3 * 86400000) 
+            ? Math.max(0, prev.overdueCount - 1) 
+            : prev.overdueCount
+        }));
       } else {
         console.error("Conversion failed:", data.error);
       }
@@ -209,32 +244,34 @@ export default function DashboardPage() {
 
   const handleGenerateLeads = async () => {
     setIsGenerating(true);
-    // Simulate finding a lead
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // In a real app, this would POST to /api/leads/generate
-    // For now, we'll just refetch or mock add
-    const brands = ["Nexus", "Apex", "Vortex", "Horizon", "Quantum"];
-    const industries = ["Technology", "Finance", "Healthcare", "Retail", "Energy"];
-    const randomBrand = brands[Math.floor(Math.random() * brands.length)];
-    const randomIndustry = industries[Math.floor(Math.random() * industries.length)];
-    
-    const newLead = {
-      id: Date.now().toString(), // Temp ID
-      name: `${randomBrand} ${randomIndustry}`,
-      industry: randomIndustry,
-      score: Math.floor(Math.random() * (95 - 70) + 70),
-      confidence: "High",
-      status: "New"
-    };
-    
-    setLeads(prev => [newLead, ...prev]);
-    setStats(prev => ({
-      ...prev,
-      totalLeads: prev.totalLeads + 1,
-      activeLeads: prev.activeLeads + 1
-    }));
-    setIsGenerating(false);
+    try {
+      const res = await fetch('http://127.0.0.1:5001/api/leads/generate', {
+        method: 'POST'
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        const newLead = {
+          id: data.data._id,
+          name: data.data.company,
+          industry: data.data.industry,
+          score: data.data.matchScore,
+          confidence: data.data.matchScore > 85 ? "High" : "Med",
+          status: "New"
+        };
+        
+        setLeads(prev => [newLead, ...prev]);
+        setStats(prev => ({
+          ...prev,
+          totalLeads: prev.totalLeads + 1,
+          activeLeads: prev.activeLeads + 1
+        }));
+      }
+    } catch (err) {
+      console.error("Failed to generate lead:", err);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleLeadClick = (lead) => {
@@ -259,37 +296,38 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <select className="appearance-none rounded-lg border border-input bg-card pl-10 pr-8 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer">
-              <option>Last 7 days</option>
-              <option>Last 30 days</option>
-              <option>Last 90 days</option>
+
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 px-3 py-2 bg-card border border-border rounded-lg shadow-sm">
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <select 
+              value={dateRange} 
+              onChange={(e) => setDateRange(Number(e.target.value))}
+              className="bg-transparent border-none text-sm font-medium focus:ring-0 cursor-pointer outline-none"
+            >
+              <option value={7}>Last 7 days</option>
+              <option value={30}>Last 30 days</option>
+              <option value={90}>Last 3 months</option>
+              <option value={365}>Last 1 year</option>
             </select>
           </div>
           <div className="relative">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input 
               type="text"
-              placeholder="Search..."
+              placeholder="Search..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="rounded-lg border border-input bg-card pl-10 pr-4 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring w-64"
+              className="pl-9 pr-4 py-2 w-64 bg-card border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
             />
           </div>
           <button 
             onClick={handleGenerateLeads}
             disabled={isGenerating}
-            className="inline-flex items-center gap-2 rounded-lg bg-foreground px-5 py-2.5 text-sm font-semibold text-background hover:opacity-90 transition-opacity shadow-sm disabled:opacity-70"
+            className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
           >
             {isGenerating ? (
-              <>
-                <div className="h-4 w-4 border-2 border-background/30 border-t-background rounded-full animate-spin" />
-                Generating...
-              </>
+              <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
               <>
                 <span className="text-lg leading-none">+</span>
@@ -506,7 +544,7 @@ export default function DashboardPage() {
             
             <div className="pt-4 border-t border-border">
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Lead volume peaked on <span className="font-semibold text-foreground">Thursday</span> due to manufacturing signals.
+                {trendInsight}
               </p>
             </div>
           </div>

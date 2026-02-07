@@ -40,6 +40,7 @@ export default function AccountsPage() {
             
             return {
               id: account._id,
+              _id: account._id, // Keep original _id for backend calls
               name: account.company,
               industry: account.industry,
               owner: account.owner,
@@ -194,7 +195,9 @@ export default function AccountsPage() {
 
                 {/* Value */}
                 <td className="px-5 py-4 text-right">
-                  <span className="text-sm font-semibold text-foreground">{account.value}</span>
+                  <span className="text-sm font-semibold text-foreground">
+                    {account.status === "Closed" ? account.value : "-"}
+                  </span>
                 </td>
               </tr>
             ))}

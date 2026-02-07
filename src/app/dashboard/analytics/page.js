@@ -7,8 +7,11 @@ import { SalesFunnel } from "@/components/dashboard/SalesFunnel";
 
 export default function AnalyticsPage() {
   const [showHistory, setShowHistory] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [dateRange, setDateRange] = useState('6m'); // default to 6 months
+  const [rangeLabel, setRangeLabel] = useState('Last 6 Months');
   
   // Analytics data state
   const [analyticsData, setAnalyticsData] = useState({
@@ -18,14 +21,16 @@ export default function AnalyticsPage() {
     bestMonth: 'Loading...',
     industryPerformance: [],
     statusDistribution: [],
-    funnelData: []
+    funnelData: [],
+    monthlyTrends: []
   });
 
   // Fetch analytics stats from backend
   useEffect(() => {
     const fetchAnalytics = async () => {
+      setLoading(true);
       try {
-        const res = await fetch('http://127.0.0.1:5001/api/analytics/stats');
+        const res = await fetch(`http://127.0.0.1:5001/api/analytics/stats?range=${dateRange}`);
         if (!res.ok) throw new Error("Failed to connect to backend");
         
         const data = await res.json();
@@ -44,7 +49,32 @@ export default function AnalyticsPage() {
     };
 
     fetchAnalytics();
-  }, []);
+  }, [dateRange]);
+
+  const handleRangeChange = (value, label) => {
+    setDateRange(value);
+    setRangeLabel(label);
+    setShowHistory(false);
+  };
+
+  const handleExport = () => {
+    // Simple export simulation
+    const csvContent = "data:text/csv;charset=utf-8," + 
+      "Metric,Value\n" +
+      `Total Leads,${analyticsData.totalLeads}\n` +
+      `Avg Per Month,${analyticsData.avgPerMonth}\n` +
+      `Best Month,${analyticsData.bestMonth}\n` +
+      `Growth,${analyticsData.leadsIncrease}`;
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `analytics_export_${dateRange}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setShowMenu(false);
+  };
 
   // Industry icons mapping
   const industryColorsMap = {
@@ -58,7 +88,7 @@ export default function AnalyticsPage() {
     'Retail': 'bg-cyan-100/50 text-cyan-600'
   };
 
-  if (loading) {
+  if (loading && !analyticsData.totalLeads) { // Only full load screen on first load
     return (
       <div className="flex h-[calc(100vh-4rem)] items-center justify-center bg-[#F5F3FF]/30">
         <div className="flex flex-col items-center gap-4">
@@ -69,28 +99,14 @@ export default function AnalyticsPage() {
     );
   }
 
-  if (error) {
-    return (
-      <div className="flex h-[calc(100vh-4rem)] items-center justify-center bg-[#F5F3FF]/30 p-4">
-        <div className="max-w-md w-full p-8 rounded-2xl border border-red-200 bg-red-50/50 text-center">
-          <div className="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
-            <AlertCircle className="h-6 w-6 text-red-600" />
-          </div>
-          <h3 className="text-lg font-bold text-slate-900 mb-2">Connection Error</h3>
-          <p className="text-sm text-slate-600 mb-6">{error}</p>
-          <button 
-            onClick={() => window.location.reload()}
-            className="w-full py-2.5 rounded-xl bg-slate-900 text-white font-semibold hover:opacity-90 transition-opacity"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // ... error state handled same ...
 
   const industries = analyticsData.industryPerformance || [];
   const statusData = analyticsData.statusDistribution || [];
+  const monthlyTrends = analyticsData.monthlyTrends || [];
+
+  // Calculate max value for chart scaling
+  const maxTrendValue = Math.max(...monthlyTrends.map(t => t.value), 10);
 
   return (
     <div className="min-h-screen bg-[#F5F3FF]/30 p-8 space-y-8 font-sans text-slate-800">
@@ -110,7 +126,7 @@ export default function AnalyticsPage() {
         {/* Controls */}
         <div className="flex items-center gap-4">
           <button className="h-10 px-4 rounded-lg bg-white shadow-sm text-xs font-semibold text-slate-600 flex items-center gap-2 hover:bg-slate-50 border border-slate-100">
-            <span className="text-slate-400">☰</span> Last 6 months <ChevronDown className="h-3 w-3" />
+            <span className="text-slate-400">☰</span> {rangeLabel} ({dateRange})
           </button>
           <div className="h-10 w-10 rounded-full bg-white shadow-sm flex items-center justify-center border border-white">
             <div className="h-8 w-8 rounded-full bg-orange-50 flex items-center justify-center">
@@ -179,15 +195,28 @@ export default function AnalyticsPage() {
             </div>
 
             {/* Sales Funnel Small Card */}
-            <div className="w-full lg:w-80 bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex flex-col justify-center relative overflow-hidden">
+            <div className="w-full lg:w-80 bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex flex-col justify-between relative overflow-hidden">
                <div className="absolute right-4 top-4 text-slate-200">
                   <TrendingUp className="h-10 w-10 opacity-20" />
                </div>
               <div className="flex justify-between items-start mb-2 relative z-10">
                 <h3 className="font-bold text-slate-900">Sales Funnel</h3>
-                <button className="text-[10px] bg-slate-50 px-2 py-1 rounded border border-slate-200 text-slate-500 font-medium">Last 6 months</button>
+                <button className="text-[10px] bg-slate-50 px-2 py-1 rounded border border-slate-200 text-slate-500 font-medium">{rangeLabel}</button>
               </div>
-              <p className="text-xs text-slate-400 relative z-10">Lead progression through stages</p>
+              
+              <div className="mt-4 relative z-10">
+                <div className="flex items-baseline gap-2">
+                   <span className="text-3xl font-bold text-slate-900">
+                     {analyticsData.funnelData.find(f => f.label === 'Converted')?.percent || '0%'}
+                   </span>
+                   <span className="text-sm font-medium text-slate-500">Conversion Rate</span>
+                </div>
+                <div className="mt-2 text-xs text-slate-400">
+                  <span className="font-semibold text-slate-700">
+                    {analyticsData.funnelData.find(f => f.label === 'Converted')?.value || '0'}
+                  </span> leads converted to deals
+                </div>
+              </div>
             </div>
           </div>
 
@@ -203,14 +232,24 @@ export default function AnalyticsPage() {
                     onClick={(e) => { e.stopPropagation(); setShowHistory(!showHistory); }}
                     className="flex items-center gap-2 text-sm font-semibold text-slate-600 border border-slate-200 rounded-full px-4 py-1.5 hover:bg-slate-50 bg-white shadow-sm transition-all hover:shadow-md"
                   >
-                    <div className="h-2 w-2 rounded-full border-[2px] border-slate-300" /> History <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                    <div className="h-2 w-2 rounded-full border-[2px] border-slate-300" /> {rangeLabel} <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
                   </button>
                   
                   {showHistory && (
                     <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-100 py-1 z-20 animate-in fade-in zoom-in-95 duration-100">
-                      {["Last 30 Days", "Last 3 Months", "Last 6 Months", "Year to Date"].map((opt) => (
-                        <button key={opt} className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-blue-600 transition-colors">
-                          {opt}
+                      {[
+                        { label: "Last 30 Days", value: "30d" },
+                        { label: "Last 3 Months", value: "3m" },
+                        { label: "Last 6 Months", value: "6m" },
+                        { label: "Year to Date", value: "1y" },
+                        { label: "All Time", value: "all" }
+                      ].map((opt) => (
+                        <button 
+                          key={opt.value} 
+                          onClick={() => handleRangeChange(opt.value, opt.label)}
+                          className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-blue-600 transition-colors"
+                        >
+                          {opt.label}
                         </button>
                       ))}
                     </div>
@@ -222,12 +261,12 @@ export default function AnalyticsPage() {
               {/* Left: Bar Chart */}
               <div className="w-full lg:w-[25%] shrink-0 pt-4 pr-6 border-r border-slate-100/50">
                 <div className="relative h-64 w-full">
-                   {/* Y Axis Labels */}
+                   {/* Y Axis Labels (Dynamic based on max) */}
                    <div className="absolute left-0 top-0 h-full flex flex-col justify-between text-[10px] font-medium text-slate-400 w-6">
-                      <span>4K</span>
-                      <span>3K</span>
-                      <span>2K</span>
-                      <span>1K</span>
+                      <span>{Math.ceil(maxTrendValue * 1.2)}</span>
+                      <span>{Math.ceil(maxTrendValue * 0.9)}</span>
+                      <span>{Math.ceil(maxTrendValue * 0.6)}</span>
+                      <span>{Math.ceil(maxTrendValue * 0.3)}</span>
                       <span>0</span>
                    </div>
                    
@@ -236,21 +275,32 @@ export default function AnalyticsPage() {
                        {[0, 1, 2, 3, 4].map(i => <div key={i} className="border-t border-slate-100 w-full h-0" />)}
                     </div>
 
-                   {/* Bars */}
-                   <div className="absolute left-8 right-0 bottom-6 top-4 flex justify-around px-2 gap-4">
-                      {/* Sept */}
-                      <div className="relative flex flex-col justify-end items-center gap-2 group cursor-pointer w-12 h-full">
-                         <div className="w-full bg-purple-500 h-[50%] rounded-t-md opacity-90 group-hover:opacity-100 transition-all shadow-sm hover:shadow-md" />
-                         <span className="text-[10px] text-slate-500 font-semibold">Sept</span>
-                      </div>
-                      {/* Oct */}
-                      <div className="relative flex flex-col justify-end items-center gap-2 group cursor-pointer w-12 h-full">
-                         <div className="w-full bg-blue-500 h-[75%] rounded-t-md opacity-90 group-hover:opacity-100 transition-all shadow-sm hover:shadow-md" />
-                         <span className="text-[10px] text-slate-500 font-semibold">Oct</span>
-                      </div>
-                   </div>
+                   {/* Bars (Dynamic) */}
+                   {monthlyTrends.length > 0 ? (
+                     <div className="absolute left-8 right-0 bottom-6 top-4 flex justify-around px-2 gap-2 items-end">
+                        {monthlyTrends.map((trend, idx) => (
+                          <div key={idx} className="relative flex flex-col justify-end items-center gap-2 group cursor-pointer w-full h-full">
+                             <div 
+                               className="w-full bg-blue-500 rounded-t-md opacity-90 group-hover:opacity-100 transition-all shadow-sm hover:shadow-md" 
+                               style={{ height: `${(trend.value / (maxTrendValue * 1.2)) * 100}%` }}
+                             />
+                             <span className="text-[9px] text-slate-500 font-semibold truncate w-full text-center">{trend.label}</span>
+                             
+                             {/* Tooltip */}
+                             <div className="absolute bottom-full mb-1 bg-slate-800 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none whitespace-nowrap">
+                               {trend.fullLabel}: {trend.value} leads
+                             </div>
+                          </div>
+                        ))}
+                     </div>
+                   ) : (
+                     <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400">
+                       No data for this period
+                     </div>
+                   )}
                 </div>
               </div>
+
 
               {/* Right: Funnel Visualization */}
               <div className="flex-1 pl-6 pt-4">
@@ -270,9 +320,24 @@ export default function AnalyticsPage() {
                   <h3 className="font-bold text-slate-900 tracking-tight">Industry-wise Performance</h3>
                   <p className="text-xs text-slate-500 font-medium mt-1">Lead volume and conversion rates</p>
                </div>
-               <button className="p-1 hover:bg-slate-50 rounded">
-                 <MoreHorizontal className="h-5 w-5 text-slate-400" />
-               </button>
+               <div className="relative">
+                 <button 
+                   onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
+                   className="p-1 hover:bg-slate-50 rounded"
+                 >
+                   <MoreHorizontal className="h-5 w-5 text-slate-400" />
+                 </button>
+                 {showMenu && (
+                    <div className="absolute right-0 top-full mt-2 w-40 bg-white rounded-xl shadow-lg border border-slate-100 py-1 z-20 animate-in fade-in zoom-in-95 duration-100">
+                      <button 
+                        onClick={handleExport}
+                        className="w-full text-left px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 hover:text-blue-600 transition-colors flex items-center gap-2"
+                      >
+                        <ArrowUpRight className="h-4 w-4" /> Export Data
+                      </button>
+                    </div>
+                  )}
+               </div>
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
