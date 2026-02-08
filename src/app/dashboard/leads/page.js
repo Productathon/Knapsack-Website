@@ -63,7 +63,7 @@ function LeadsContent() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [searchQuery, setSearchQuery] = useState(""); // Kept for local UI if needed, but filters.keyword drives backend
+  // const [searchQuery, setSearchQuery] = useState(""); // Removed in favor of filters.keyword
 
   // Handle 'view' query param to auto-open lead details
   useEffect(() => {
@@ -660,8 +660,8 @@ function LeadsContent() {
             <input
               type="text"
               placeholder="Search by company or industry..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={filters.keyword}
+              onChange={(e) => setFilters({ ...filters, keyword: e.target.value })}
               className="w-full rounded-lg border border-input bg-background pl-10 pr-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
@@ -998,15 +998,38 @@ function LeadsContent() {
 
               {/* Action Buttons */}
               <div className="grid grid-cols-3 gap-3">
-                <button className="flex flex-col items-center gap-2 p-4 rounded-lg border border-border bg-card hover:bg-muted transition-colors">
+                <button 
+                  onClick={() => {
+                    if (selectedLead.phone) {
+                      window.location.href = `tel:${selectedLead.phone}`;
+                    } else {
+                      alert('No phone number available');
+                    }
+                  }}
+                  className="flex flex-col items-center gap-2 p-4 rounded-lg border border-border bg-card hover:bg-muted transition-colors"
+                >
                   <Phone className="h-5 w-5" />
                   <span className="text-xs font-medium">Call</span>
                 </button>
-                <button className="flex flex-col items-center gap-2 p-4 rounded-lg border border-border bg-card hover:bg-muted transition-colors">
+                <button 
+                  onClick={() => {
+                    if (selectedLead.email) {
+                      window.location.href = `mailto:${selectedLead.email}`;
+                    } else {
+                      alert('No email available');
+                    }
+                  }}
+                  className="flex flex-col items-center gap-2 p-4 rounded-lg border border-border bg-card hover:bg-muted transition-colors"
+                >
                   <Mail className="h-5 w-5" />
                   <span className="text-xs font-medium">Email</span>
                 </button>
-                <button className="flex flex-col items-center gap-2 p-4 rounded-lg border border-border bg-card hover:bg-muted transition-colors">
+                <button 
+                  onClick={() => {
+                    alert('Meeting scheduler integration coming soon!');
+                  }}
+                  className="flex flex-col items-center gap-2 p-4 rounded-lg border border-border bg-card hover:bg-muted transition-colors"
+                >
                   <Calendar className="h-5 w-5" />
                   <span className="text-xs font-medium">Meet</span>
                 </button>
@@ -1035,7 +1058,7 @@ function LeadsContent() {
                       <label key={item} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors">
                         <input 
                           type="checkbox" 
-                          checked={selectedLead.feedback?.includes(item)}
+                          checked={selectedLead.feedback?.includes(item) || false}
                           onChange={(e) => {
                             const currentFeedback = selectedLead.feedback || [];
                             const newFeedback = e.target.checked

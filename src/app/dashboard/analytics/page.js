@@ -112,17 +112,7 @@ export default function AnalyticsPage() {
     <div className="min-h-screen bg-[#F5F3FF]/30 p-8 space-y-8 font-sans text-slate-800">
       
       {/* Top Header */}
-      <div className="flex items-center justify-between mb-8">
-        {/* Search */}
-        <div className="relative w-96">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <input 
-            type="text" 
-            placeholder="Search for anything..." 
-            className="w-full h-11 pl-11 pr-4 rounded-xl bg-white border-none shadow-sm text-sm focus:ring-2 focus:ring-purple-100 focus:outline-none placeholder:text-slate-400"
-          />
-        </div>
-        
+      <div className="flex items-center justify-end mb-8">
         {/* Controls */}
         <div className="flex items-center gap-4">
           <button className="h-10 px-4 rounded-lg bg-white shadow-sm text-xs font-semibold text-slate-600 flex items-center gap-2 hover:bg-slate-50 border border-slate-100">
