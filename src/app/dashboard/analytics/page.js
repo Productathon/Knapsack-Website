@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Search, ChevronDown, Calendar, ArrowUpRight, TrendingUp, Users, Award, MoreHorizontal, AlertCircle } from "lucide-react";
 import { SalesFunnel } from "@/components/dashboard/SalesFunnel";
@@ -109,34 +110,19 @@ export default function AnalyticsPage() {
   const maxTrendValue = Math.max(...monthlyTrends.map(t => t.value), 10);
 
   return (
-    <div className="min-h-screen bg-[#F5F3FF]/30 p-8 space-y-8 font-sans text-slate-800">
-      
-      {/* Top Header */}
-      <div className="flex items-center justify-end mb-8">
-        {/* Controls */}
-        <div className="flex items-center gap-4">
-          <button className="h-10 px-4 rounded-lg bg-white shadow-sm text-xs font-semibold text-slate-600 flex items-center gap-2 hover:bg-slate-50 border border-slate-100">
-            <span className="text-slate-400">☰</span> {rangeLabel} ({dateRange})
-          </button>
-          <div className="h-10 w-10 rounded-full bg-white shadow-sm flex items-center justify-center border border-white">
-            <div className="h-8 w-8 rounded-full bg-orange-50 flex items-center justify-center">
-              <span className="text-orange-600 text-xs font-bold">👤</span>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div className="min-h-screen bg-[#F5F3FF]/30 p-4 space-y-4 font-sans text-slate-800">
 
       {/* Page Title */}
       <div className="space-y-1">
-        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Analytics</h1>
-        <p className="text-sm text-slate-500">Review system performance. <span className="font-semibold text-slate-700">Evaluate Intelligence</span> effectiveness.</p>
+        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Historical Analytics</h1>
+        <p className="text-sm text-slate-500">Review performance trends over time. <Link href="/dashboard" className="text-blue-600 hover:underline">View today's focus →</Link></p>
       </div>
 
       {/* Hero Grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
         
         {/* Left Column: Metrics & Charts */}
-        <div className="xl:col-span-12 space-y-6">
+        <div className="xl:col-span-12 space-y-4">
           
           {/* KPI Strip */}
           <div className="flex flex-col lg:flex-row gap-6">
@@ -211,7 +197,7 @@ export default function AnalyticsPage() {
           </div>
 
           {/* Main Chart Section: Lead Generation + Funnel */}
-          <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-100">
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
             <div className="flex justify-between items-start mb-6">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 tracking-tight">Lead Generation Over Time</h2>
@@ -304,7 +290,7 @@ export default function AnalyticsPage() {
         <div className="xl:col-span-12 grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           {/* Industry Performance */}
-          <div className="lg:col-span-2 bg-white rounded-2xl p-8 shadow-sm border border-slate-100">
+          <div className="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
             <div className="mb-6 flex justify-between items-center">
                <div>
                   <h3 className="font-bold text-slate-900 tracking-tight">Industry-wise Performance</h3>
@@ -332,7 +318,11 @@ export default function AnalyticsPage() {
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
               {industries.map((ind) => (
-                <div key={ind.name} className="flex items-center gap-4 bg-[#F8FAFC] p-4 rounded-xl border border-slate-50 hover:border-slate-100 transition-colors group">
+                <Link 
+                  key={ind.name} 
+                  href={`/dashboard/leads?industry=${encodeURIComponent(ind.name)}`}
+                  className="flex items-center gap-4 bg-[#F8FAFC] p-4 rounded-xl border border-slate-50 hover:border-blue-200 hover:bg-blue-50/30 transition-colors group cursor-pointer"
+                >
                   <div className={cn("h-10 w-10 rounded-lg flex items-center justify-center text-xl bg-white shadow-sm border border-slate-100 group-hover:scale-105 transition-transform", industryColorsMap[ind.name]?.split(' ')[1] || 'text-slate-600')}>
                      {ind.icon || '📊'}
                   </div>
@@ -342,19 +332,19 @@ export default function AnalyticsPage() {
                       <span className="font-bold text-slate-900">{ind.value}</span>
                     </div>
                     <div className="flex justify-between items-center text-xs">
-                      <span className="text-slate-400">{ind.value.replace(',','')} leads</span>
+                      <span className="text-slate-400">Click to view leads</span>
                       <span className="text-green-600 font-bold flex items-center bg-green-50 px-1.5 py-0.5 rounded-full">
                         <TrendingUp className="h-3 w-3 mr-1" /> {ind.growth}
                       </span>
                     </div>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           </div>
 
           {/* Status Distribution */}
-          <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-100 flex flex-col">
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex flex-col">
             <div className="mb-6">
               <h3 className="font-bold text-slate-900 tracking-tight">Status Distribution</h3>
               <p className="text-xs text-slate-500 font-medium mt-1">Current lead status breakdown</p>
@@ -424,7 +414,11 @@ export default function AnalyticsPage() {
               {/* Legend */}
               <div className="flex-1 w-full space-y-3">
                 {statusData.map((s) => (
-                  <div key={s.label} className="flex items-center justify-between text-xs w-full">
+                  <Link 
+                    key={s.label} 
+                    href={`/dashboard/leads?status=${encodeURIComponent(s.label)}`}
+                    className="flex items-center justify-between text-xs w-full px-2 py-1.5 rounded-lg hover:bg-blue-50 cursor-pointer transition-colors"
+                  >
                     <div className="flex items-center gap-2">
                       <div className={cn("w-2.5 h-2.5 rounded-full", s.color)} />
                       <span className="text-slate-600 font-semibold">{s.label}</span>
@@ -433,7 +427,7 @@ export default function AnalyticsPage() {
                         <span>{s.count}</span>
                         <span className="font-bold w-6 text-right">{s.percent}%</span>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </div>

@@ -6,21 +6,16 @@ import { cn } from "@/lib/utils";
 import { 
   LayoutDashboard, 
   Inbox, 
-  Building2, 
   FileText, 
   BarChart3, 
   Settings,
   HelpCircle,
-  User,
-  Server
+  User
 } from "lucide-react";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Lead Inbox", href: "/dashboard/leads", icon: Inbox },
-  { name: "Accounts", href: "/dashboard/accounts", icon: Building2 },
-  { name: "Dossiers", href: "/dashboard/dossiers", icon: FileText },
-  { name: "Logs", href: "/dashboard/logs", icon: Server },
+  { name: "Leads", href: "/dashboard/leads", icon: Inbox },
   { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
 ];
 

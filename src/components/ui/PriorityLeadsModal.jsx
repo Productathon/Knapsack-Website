@@ -1,14 +1,42 @@
 'use client';
 
-import { X, TrendingUp, Flame, Mail, Phone, Building, MapPin, Calendar, ChevronLeft } from 'lucide-react';
+import { X, TrendingUp, Flame, Mail, Phone, Building, MapPin, Calendar, ChevronLeft, Star } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
+import Link from 'next/link';
 
-export default function PriorityLeadsModal({ isOpen, onClose, title, leads, priorityType, initialLead = null, onConvertSuccess }) {
+export default function PriorityLeadsModal({ isOpen, onClose, title, leads, priorityType, initialLead = null }) {
   const [selectedLead, setSelectedLead] = useState(initialLead);
   const [showConvertDialog, setShowConvertDialog] = useState(null);
   const [isConverting, setIsConverting] = useState(false);
   const [conversionSuccess, setConversionSuccess] = useState(false);
+  const [starredLeads, setStarredLeads] = useState([]);
+
+  // Load starred leads from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('starred_leads');
+    if (saved) {
+      setStarredLeads(JSON.parse(saved));
+    }
+  }, []);
+
+  // Update starred state
+  const toggleStar = (leadId) => {
+    const isStarred = starredLeads.includes(leadId);
+    let newStarred;
+
+    if (isStarred) {
+      newStarred = starredLeads.filter(id => id !== leadId);
+    } else {
+      newStarred = [...starredLeads, leadId];
+    }
+
+    setStarredLeads(newStarred);
+    localStorage.setItem('starred_leads', JSON.stringify(newStarred));
+
+    // Dispatch event for other components to update if needed
+    window.dispatchEvent(new Event('storage'));
+  };
 
   // Update selected lead if initialLead changes when modal opens
   useEffect(() => {
@@ -28,12 +56,12 @@ export default function PriorityLeadsModal({ isOpen, onClose, title, leads, prio
         }
       }
     };
-    
+
     if (isOpen) {
       document.addEventListener('keydown', handleKeyDown);
       document.body.style.overflow = 'hidden';
     }
-    
+
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
       document.body.style.overflow = 'unset';
@@ -73,118 +101,23 @@ export default function PriorityLeadsModal({ isOpen, onClose, title, leads, prio
     await new Promise(resolve => setTimeout(resolve, 1500));
     setIsConverting(false);
     setConversionSuccess(true);
-    
-    // Notify parent
-    if (onConvertSuccess && showConvertDialog) {
-      onConvertSuccess(showConvertDialog);
-    }
   };
 
   if (!isOpen) return null;
-
-  // Success View
-  if (conversionSuccess && showConvertDialog) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div 
-          className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300"
-          onClick={() => {
-            setShowConvertDialog(null);
-            setConversionSuccess(false);
-            onClose();
-          }}
-        />
-        <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm p-8 flex flex-col items-center text-center animate-in zoom-in-95 fade-in duration-300">
-          <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center mb-4 animate-in zoom-in duration-500">
-            <TrendingUp className="h-8 w-8 text-green-600" />
-          </div>
-          <h3 className="text-xl font-bold text-foreground mb-2">Conversion Successful!</h3>
-          <p className="text-muted-foreground mb-6">
-            <span className="font-semibold text-foreground">{showConvertDialog.name}</span> has been converted to a customer account.
-          </p>
-          <div className="flex flex-col gap-3 w-full">
-            <button
-              onClick={() => {
-                // Simulate redirect
-                window.location.href = '/dashboard/accounts'; 
-              }}
-              className="w-full py-2.5 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors"
-            >
-              View Account
-            </button>
-            <button
-              onClick={() => {
-                setShowConvertDialog(null);
-                setConversionSuccess(false);
-                onClose();
-              }}
-              className="w-full py-2.5 bg-muted text-foreground font-medium rounded-lg hover:bg-muted/80 transition-colors"
-            >
-              Done
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Convert Confirmation Dialog
-  if (showConvertDialog) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div 
-          className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
-          onClick={() => !isConverting && setShowConvertDialog(null)}
-        />
-        
-        <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-md animate-in zoom-in-95 fade-in duration-200">
-          <div className="p-6">
-            <h3 className="text-lg font-semibold text-foreground mb-2">Convert Lead to Customer?</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Are you sure you want to convert <span className="font-semibold text-foreground">{showConvertDialog.name}</span> to a customer? 
-              This will move them to your active customer list.
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setShowConvertDialog(null)}
-                disabled={isConverting}
-                className="px-4 py-2 text-sm font-medium text-foreground bg-muted hover:bg-muted/80 rounded-lg transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmConvert}
-                disabled={isConverting}
-                className="px-4 py-2 text-sm font-medium bg-green-600 text-white hover:bg-green-700 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
-              >
-                {isConverting ? (
-                  <>
-                    <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Converting...
-                  </>
-                ) : (
-                  'Yes, Convert'
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // Lead Detail View
   if (selectedLead) {
     const priority = getPriorityBadge(selectedLead.score);
     const isHighPriority = selectedLead.score >= 85;
+    const isStarred = starredLeads.includes(selectedLead.id);
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div 
+        <div
           className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
           onClick={() => setSelectedLead(null)}
         />
-        
+
         <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col animate-in zoom-in-95 fade-in duration-200">
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-border">
@@ -286,7 +219,7 @@ export default function PriorityLeadsModal({ isOpen, onClose, title, leads, prio
                 <h3 className="text-sm font-semibold text-foreground mb-3">AI Insights</h3>
                 <div className="p-4 rounded-lg border border-border bg-blue-50/30 dark:bg-blue-950/10">
                   <p className="text-sm text-foreground">
-                    <span className="font-semibold">Recommendation:</span> This lead shows high engagement and is ready for conversion. 
+                    <span className="font-semibold">Recommendation:</span> This lead shows high engagement and is ready for conversion.
                     Best time to contact: Weekdays 2-4 PM EST. Decision maker recently viewed pricing page 3 times.
                   </p>
                 </div>
@@ -303,15 +236,16 @@ export default function PriorityLeadsModal({ isOpen, onClose, title, leads, prio
               Back to List
             </button>
             <button
-              onClick={() => handleConvert(selectedLead)}
+              onClick={() => toggleStar(selectedLead.id)}
               className={cn(
-                "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
-                isHighPriority 
-                  ? "bg-red-600 text-white hover:bg-red-700" 
+                "px-4 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-2",
+                isStarred
+                  ? "bg-amber-100 text-amber-700 hover:bg-amber-200 border border-amber-200"
                   : "bg-primary text-primary-foreground hover:bg-primary/90"
               )}
             >
-              Convert to Customer
+              <Star className={cn("h-4 w-4", isStarred && "fill-amber-700")} />
+              {isStarred ? "Starred" : "Star Lead"}
             </button>
           </div>
         </div>
@@ -324,11 +258,11 @@ export default function PriorityLeadsModal({ isOpen, onClose, title, leads, prio
   // Main Lead List View
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div 
+      <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
         onClick={onClose}
       />
-      
+
       <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col animate-in zoom-in-95 fade-in duration-200">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div className="flex items-center gap-3">
@@ -350,7 +284,8 @@ export default function PriorityLeadsModal({ isOpen, onClose, title, leads, prio
             {leads.map((lead, index) => {
               const priority = getPriorityBadge(lead.score);
               const isHighPriority = lead.score >= 85;
-              
+              const isStarred = starredLeads.includes(lead.id);
+
               return (
                 <div
                   key={index}
@@ -362,13 +297,13 @@ export default function PriorityLeadsModal({ isOpen, onClose, title, leads, prio
                   {isHighPriority && (
                     <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-red-500/5 to-orange-500/5 animate-pulse" />
                   )}
-                  
+
                   <div className="relative flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className="h-12 w-12 rounded-lg bg-muted border border-border flex items-center justify-center text-sm font-bold text-foreground flex-shrink-0">
                         {lead.name[0]}
                       </div>
-                      
+
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <h3 className="text-sm font-semibold text-foreground truncate">{lead.name}</h3>
@@ -379,7 +314,7 @@ export default function PriorityLeadsModal({ isOpen, onClose, title, leads, prio
                             </div>
                           )}
                         </div>
-                        
+
                         <div className="flex items-center gap-2 flex-wrap">
                           <div className="flex items-center gap-1">
                             <span className="text-xs text-muted-foreground">Score:</span>
@@ -409,15 +344,16 @@ export default function PriorityLeadsModal({ isOpen, onClose, title, leads, prio
                         View
                       </button>
                       <button
-                        onClick={() => handleConvert(lead)}
+                        onClick={() => toggleStar(lead.id)}
                         className={cn(
-                          "px-3 py-1.5 text-xs font-medium rounded-lg transition-colors",
-                          isHighPriority 
-                            ? "bg-red-600 text-white hover:bg-red-700" 
-                            : "bg-primary text-primary-foreground hover:bg-primary/90"
+                          "p-2 rounded-lg transition-colors",
+                          isStarred
+                            ? "text-amber-500 bg-amber-50 hover:bg-amber-100"
+                            : "text-muted-foreground hover:text-amber-500 hover:bg-muted"
                         )}
+                        title={isStarred ? "Unstar Lead" : "Star Lead"}
                       >
-                        Convert
+                        <Star className={cn("h-4 w-4", isStarred && "fill-amber-500")} />
                       </button>
                     </div>
                   </div>

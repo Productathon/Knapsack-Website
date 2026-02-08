@@ -6,6 +6,7 @@ import {
   ExternalLink, Globe, Server, Activity, Filter
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getWilUrl } from "@/lib/api-client";
 
 // Format date to: Feb 07 14:32:01
 const formatTerminalDate = (dateString) => {
@@ -17,35 +18,75 @@ const formatTerminalDate = (dateString) => {
 
 export default function LogsPage() {
   const [logs, setLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [connectionStatus, setConnectionStatus] = useState("connecting"); // connecting, connected, error
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("All");
   const [autoScroll, setAutoScroll] = useState(true);
   const logsEndRef = useRef(null);
+  const eventSourceRef = useRef(null);
 
-  // Fetch logs
-  const fetchLogs = async () => {
-    try {
-      const res = await fetch('http://127.0.0.1:5001/api/logs');
-      const data = await res.json();
-      if (data.success) {
-        // Sort by date ascending for terminal view (oldest top, newest bottom)
-        const sortedLogs = data.data.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-        setLogs(sortedLogs);
-      }
-    } catch (err) {
-      console.error("Failed to fetch logs:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Connect to SSE stream
   useEffect(() => {
-    fetchLogs();
-    // Simulate real-time polling every 10 seconds
-    const interval = setInterval(fetchLogs, 10000);
-    return () => clearInterval(interval);
+    const connectToStream = () => {
+      setConnectionStatus("connecting");
+      const url = `${getWilUrl()}/logs/stream`;
+      
+      const eventSource = new EventSource(url);
+      eventSourceRef.current = eventSource;
+
+      eventSource.onopen = () => {
+        setConnectionStatus("connected");
+        // Add a system log indicating connection
+        addLog({
+          timestamp: new Date().toISOString(),
+          level: 'info',
+          message: 'Connected to WIL log stream',
+          system: true
+        });
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          addLog(data);
+        } catch (err) {
+          console.error("Failed to parse log message:", err);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        console.error("EventSource error:", err);
+        setConnectionStatus("error");
+        eventSource.close();
+        
+        // Retry connection after 5 seconds
+        setTimeout(() => {
+            if (active) connectToStream();
+        }, 5000);
+      };
+    };
+
+    let active = true;
+    connectToStream();
+
+    return () => {
+      active = false;
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+    };
   }, []);
+
+  const addLog = (logData) => {
+      setLogs(prevLogs => {
+          // Keep last 500 logs to prevent memory issues
+          const newLogs = [...prevLogs, logData];
+          if (newLogs.length > 500) {
+              return newLogs.slice(newLogs.length - 500);
+          }
+          return newLogs;
+      });
+  };
 
   // Auto-scroll to bottom on new logs
   useEffect(() => {
@@ -57,32 +98,32 @@ export default function LogsPage() {
   // Filtering logic
   const filteredLogs = useMemo(() => {
     return logs.filter(log => {
-      const matchesSearch = 
-        log.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        log.domain.toLowerCase().includes(searchQuery.toLowerCase());
+      // Map WIL log fields to search terms
+      // WIL logs have: timestamp, level, message, ...meta
+      const message = log.message || "";
+      const metaStr = JSON.stringify(log); 
       
-      const matchesType = filterType === "All" || log.sourceType === filterType;
+      const matchesSearch = 
+        message.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        metaStr.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      // Filter by level if specified (mapping backend types to levels for now if needed, or stick to 'All')
+      // Original UI had specific types (News, Tender etc). 
+      // WIL logs are technical logs. We might want to filter by 'level' instead?
+      // For now, let's keep 'All' working and maybe adapt if WIL sends 'sourceType' in meta.
+      const matchesType = true; // defaulting to true for now as WIL logs are generic
 
       return matchesSearch && matchesType;
     });
-  }, [logs, searchQuery, filterType]);
+  }, [logs, searchQuery]);
 
-  const getTypeColor = (type) => {
-    switch (type) {
-      case 'News': return 'text-blue-400';
-      case 'Tender': return 'text-purple-400';
-      case 'Signal': return 'text-yellow-400';
-      case 'Govt Portal': return 'text-orange-400';
+  const getLevelColor = (level) => {
+    switch (level) {
+      case 'info': return 'text-blue-400';
+      case 'warn': return 'text-yellow-400';
+      case 'error': return 'text-red-500';
+      case 'debug': return 'text-slate-500';
       default: return 'text-slate-400';
-    }
-  };
-
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'Processed': return 'text-emerald-500';
-      case 'Failed': return 'text-red-500';
-      case 'Pending': return 'text-amber-500';
-      default: return 'text-slate-500';
     }
   };
 
@@ -96,8 +137,13 @@ export default function LogsPage() {
           <h1 className="font-semibold text-slate-100 tracking-tight">System Logs</h1>
           <div className="h-4 w-[1px] bg-slate-700 mx-1"></div>
           <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            Live Connection
+            <span className={cn(
+                "w-2 h-2 rounded-full animate-pulse",
+                connectionStatus === 'connected' ? "bg-emerald-500" : 
+                connectionStatus === 'connecting' ? "bg-yellow-500" : "bg-red-500"
+            )}></span>
+            {connectionStatus === 'connected' ? "Live Connection" : 
+             connectionStatus === 'connecting' ? "Connecting..." : "Disconnected"}
           </div>
         </div>
 
@@ -112,22 +158,6 @@ export default function LogsPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="bg-[#0d1117] border border-slate-700 text-slate-300 text-xs rounded-md pl-8 pr-3 py-1 w-48 focus:outline-none focus:border-slate-500 focus:ring-1 focus:ring-slate-500 transition-all placeholder:text-slate-600"
             />
-          </div>
-
-          {/* Filter */}
-          <div className="relative">
-            <Filter className="absolute left-2 top-1.5 h-3.5 w-3.5 text-slate-500" />
-            <select 
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="bg-[#0d1117] border border-slate-700 text-slate-300 text-xs rounded-md pl-8 pr-8 py-1 focus:outline-none focus:border-slate-500 appearance-none cursor-pointer hover:border-slate-600"
-            >
-              <option value="All">All Sources</option>
-              <option value="News">News</option>
-              <option value="Tender">Tender</option>
-              <option value="Govt Portal">Govt Portal</option>
-              <option value="Signal">Signal</option>
-            </select>
           </div>
 
           <div className="h-4 w-[1px] bg-slate-700"></div>
@@ -146,56 +176,38 @@ export default function LogsPage() {
 
       {/* Terminal View */}
       <div className="flex-1 overflow-y-auto p-4 space-y-1 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
-        {loading ? (
-          <div className="flex items-center gap-2 text-slate-500 animate-pulse">
-            <span className="text-emerald-500">$</span>
-            <span>Initializing log stream...</span>
+        {filteredLogs.length === 0 ? (
+          <div className="text-slate-500 italic px-2">
+            {connectionStatus === 'connecting' ? "Waiting for logs..." : "No logs found."}
           </div>
-        ) : filteredLogs.length === 0 ? (
-          <div className="text-slate-500 italic px-2">No logs found matching criteria.</div>
         ) : (
-          filteredLogs.map((log) => (
-            <div key={log._id} className="group flex items-start gap-3 hover:bg-[#161b22] px-2 py-0.5 rounded transition-colors">
+          filteredLogs.map((log, idx) => (
+            <div key={idx} className="group flex items-start gap-3 hover:bg-[#161b22] px-2 py-0.5 rounded transition-colors">
               {/* Timestamp */}
               <span className="text-slate-500 shrink-0 select-none w-36">
-                {formatTerminalDate(log.createdAt)}
+                {formatTerminalDate(log.timestamp)}
               </span>
 
               {/* Status Indicator */}
-              <span className={cn("shrink-0 font-bold w-20", getStatusColor(log.status))}>
-                {log.status.toUpperCase()}
+              <span className={cn("shrink-0 font-bold w-16 uppercase", getLevelColor(log.level))}>
+                {log.level}
               </span>
 
-              {/* Source Type */}
-              <span className={cn("shrink-0 w-24", getTypeColor(log.sourceType))}>
-                [{log.sourceType}]
-              </span>
-
-              {/* Domain & Title */}
+              {/* Message */}
               <div className="flex-1 break-all">
-                <span className="text-purple-300 mr-2">{log.domain}</span>
-                <span className="text-slate-300">{log.title}</span>
+                <span className="text-slate-300">{log.message}</span>
                 
-                {/* Expand on hover/click details could go here but keeping it simple terminal style */}
-                {log.errorMessage && (
-                  <span className="text-red-400 ml-2">- {log.errorMessage}</span>
-                )}
-                
-                {log.signalStrength && (
-                   <span className="ml-2 text-xs text-slate-600 bg-slate-900 px-1 rounded border border-slate-800">
-                     Sig: {log.signalStrength}
+                {/* Meta details if any */}
+                {Object.keys(log).filter(k => !['timestamp', 'level', 'message', 'traceId', 'system'].includes(k)).length > 0 && (
+                   <span className="ml-2 text-xs text-slate-600 font-normal">
+                     {JSON.stringify(
+                         Object.fromEntries(
+                             Object.entries(log).filter(([k]) => !['timestamp', 'level', 'message', 'traceId', 'system'].includes(k))
+                         )
+                     )}
                    </span>
                 )}
               </div>
-              
-              <a 
-                href={log.url} 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-blue-400 transition-opacity"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-              </a>
             </div>
           ))
         )}

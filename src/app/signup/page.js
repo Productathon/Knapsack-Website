@@ -5,11 +5,19 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+// robust toast import if available, otherwise just alert or create local state
+// Checking previous file usage: import { useToast } from "@/components/ui/Toast";
+// But ToastProvider is inside DashboardLayout... wait.
+// The ToastProvider is ONLY in dashboard layout!
+// I need to move ToastProvider to RootLayout if I want toasts in Login/Signup pages.
+// Or I can just use local state for error messages for now to keep it simple as per plan.
+// Let's use local error state for now to avoid refactoring ToastProvider placement which might be risky.
 
-export default function LoginPage() {
+export default function SignupPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { signup } = useAuth();
   
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -20,9 +28,8 @@ export default function LoginPage() {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
-    
-    // Simulate login delay removed, use actual login
-    const result = await login(email, password);
+
+    const result = await signup(username, email, password);
     
     if (result.success) {
       router.push("/dashboard");
@@ -39,7 +46,7 @@ export default function LoginPage() {
           {/* Logo */}
           <div className="text-center mb-8">
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Sales Intel</h1>
-            <p className="text-sm text-muted-foreground mt-1">Intelligence Platform</p>
+            <p className="text-sm text-muted-foreground mt-1">Create your account</p>
           </div>
 
           {/* Error Message */}
@@ -52,12 +59,27 @@ export default function LoginPage() {
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
+              <label htmlFor="username" className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                Username
+              </label>
+              <input
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="johndoe"
+                required
+                className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-shadow"
+              />
+            </div>
+
+            <div>
               <label htmlFor="email" className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                Email / Username
+                Email
               </label>
               <input
                 id="email"
-                type="text"
+                type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@company.com"
@@ -95,15 +117,15 @@ export default function LoginPage() {
               disabled={isLoading}
               className="w-full rounded-lg bg-primary py-3 text-sm font-bold text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLoading ? "Signing in..." : "LOGIN"}
+              {isLoading ? "creating account..." : "SIGN UP"}
             </button>
           </form>
 
           {/* Footer */}
-          <p className="text-center text-xs text-muted-foreground mt-8">
-            Don't have an account?{" "}
-            <Link href="/signup" className="text-primary hover:underline font-medium">
-              Create one
+          <p className="text-center text-xs text-muted-foreground mt-6">
+            Already have an account?{" "}
+            <Link href="/login" className="text-primary hover:underline font-medium">
+              Sign in
             </Link>
           </p>
         </div>

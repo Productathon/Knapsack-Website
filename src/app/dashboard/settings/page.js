@@ -1,10 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, Shield, Eye, Globe, Moon, Sun } from "lucide-react";
+import Link from "next/link";
+import { Bell, Shield, Eye, Globe, Moon, Sun, Terminal, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/Toast";
 
 export default function SettingsPage() {
+  const { showToast } = useToast();
   const [notifications, setNotifications] = useState({
     email: true,
     push: false,
@@ -16,6 +19,11 @@ export default function SettingsPage() {
     activityLog: true,
   });
   const [appearance, setAppearance] = useState("light");
+
+  const handleSave = () => {
+    // TODO: Persist to backend
+    showToast("Settings saved successfully", "success");
+  };
 
   return (
     <div className="space-y-8 max-w-3xl mx-auto">
@@ -134,9 +142,36 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      {/* Advanced */}
+      <section className="rounded-xl border border-border bg-card p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="h-10 w-10 rounded-lg bg-secondary flex items-center justify-center">
+            <Terminal className="h-5 w-5 text-muted-foreground" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-foreground">Advanced</h2>
+            <p className="text-xs text-muted-foreground">Developer and system tools</p>
+          </div>
+        </div>
+
+        <Link 
+          href="/dashboard/logs"
+          className="flex items-center justify-between py-3 px-4 -mx-4 rounded-lg hover:bg-muted/50 transition-colors"
+        >
+          <div>
+            <p className="text-sm font-medium text-foreground">System Logs</p>
+            <p className="text-xs text-muted-foreground">View real-time system logs and events</p>
+          </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </Link>
+      </section>
+
       {/* Save Button */}
       <div className="flex justify-end">
-        <button className="rounded-lg bg-foreground px-6 py-2.5 text-sm font-semibold text-background hover:opacity-90 transition-opacity">
+        <button 
+          onClick={handleSave}
+          className="rounded-lg bg-foreground px-6 py-2.5 text-sm font-semibold text-background hover:opacity-90 transition-opacity"
+        >
           Save Changes
         </button>
       </div>

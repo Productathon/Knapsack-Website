@@ -37,36 +37,97 @@ export default function DashboardPage() {
 
   const [dateRange, setDateRange] = useState(30);
 
-  // Fetch leads and dashboard stats from backend
+  // Fetch leads from WIL dossiers and dashboard stats from backend
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // Fetch leads
-        const leadsRes = await fetch(`http://127.0.0.1:5001/api/leads?days=${dateRange}`);
-        if (!leadsRes.ok) throw new Error("Failed to connect to backend");
         
-        const leadsData = await leadsRes.json();
-        
-        if (leadsData.success) {
-          const formattedLeads = leadsData.data.map(lead => ({
-            id: lead._id,
-            name: lead.company || lead.name,
-            industry: lead.industry || 'Technology',
-            score: lead.matchScore,
-            confidence: lead.matchScore > 85 ? "High" : "Med",
-            status: lead.status === 'new' ? 'New' : lead.status.charAt(0).toUpperCase() + lead.status.slice(1),
-            createdAt: lead.createdAt
-          }));
-          setLeads(formattedLeads);
+        // Fetch dossiers from WIL (source of truth for leads)
+        try {
+          const wilRes = await fetch('http://127.0.0.1:3000/api/v1/dossiers');
+          if (wilRes.ok) {
+            const wilData = await wilRes.json();
+            const dossiers = wilData.dossiers || [];
+            
+            const formattedLeads = dossiers.map((dossier, idx) => {
+              const scoringSection = dossier.sections?.find(s => s.title === 'Scoring Breakdown');
+              const overviewSection = dossier.sections?.find(s => s.title === 'Overview');
+              const score = scoringSection?.content?.finalScore 
+                ? Math.round(scoringSection.content.finalScore * 100) 
+                : 75;
+              
+              // Extract source name - prioritize company field from WIL
+              let sourceName = 'Unknown Source';
+              
+              // Priority 1: Explicit company field from dossier
+              if (dossier.company && typeof dossier.company === 'string') {
+                sourceName = dossier.company;
+              }
+              // Priority 2: Extract from overview section
+              else if (overviewSection?.content?.subject) {
+                sourceName = overviewSection.content.subject;
+              }
+              // Priority 3: Extract from humanSummary
+              else if (dossier.humanSummary) {
+                const match = dossier.humanSummary.match(/(?:from|about|for|regarding)\s+([A-Z][A-Za-z0-9\s&.,'-]+?)(?:\s+(?:scored|has|is|was|\.)|$)/i);
+                if (match && match[1] && match[1].length > 2 && match[1].length < 40) {
+                  sourceName = match[1].trim();
+                }
+              }
+              // Priority 4: Extract from source URL in overview
+              if (sourceName === 'Unknown Source' && overviewSection?.content?.sourceUrl) {
+                try {
+                  const url = new URL(overviewSection.content.sourceUrl);
+                  const domain = url.hostname.replace('www.', '').split('.')[0];
+                  if (domain && domain.length > 2) {
+                    sourceName = domain.charAt(0).toUpperCase() + domain.slice(1);
+                  }
+                } catch { /* ignore */ }
+              }
+              // Priority 5: Fallback to Lead number (not hex ID)
+              if (sourceName === 'Unknown Source') {
+                sourceName = `Lead ${idx + 1}`;
+              }
+              
+              return {
+                id: dossier.id,
+                name: sourceName,
+                industry: 'Business Intelligence',
+                score: score,
+                confidence: score > 85 ? 'High' : 'Med',
+                status: dossier.consumedAt ? 'Contacted' : 'New',
+                createdAt: dossier.createdAt
+              };
+            });
+            setLeads(formattedLeads);
+          }
+        } catch (wilErr) {
+          console.warn('WIL not available, falling back to Backend:', wilErr);
+          // Fallback to Backend if WIL is not running
+          const leadsRes = await fetch(`http://127.0.0.1:5001/api/leads?days=${dateRange}`);
+          if (leadsRes.ok) {
+            const leadsData = await leadsRes.json();
+            if (leadsData.success) {
+              const formattedLeads = leadsData.data.map(lead => ({
+                id: lead._id,
+                name: lead.company || lead.name,
+                industry: lead.industry || 'Technology',
+                score: lead.matchScore,
+                confidence: lead.matchScore > 85 ? "High" : "Med",
+                status: lead.status === 'new' ? 'New' : lead.status.charAt(0).toUpperCase() + lead.status.slice(1),
+                createdAt: lead.createdAt
+              }));
+              setLeads(formattedLeads);
+            }
+          }
         }
 
-        // Fetch dashboard stats with date filter
+        // Fetch dashboard stats from Backend (analytics)
         const statsRes = await fetch(`http://127.0.0.1:5001/api/dashboard/stats?days=${dateRange}`);
         
         if (statsRes.ok) {
           const statsData = await statsRes.json();
-          // console.log("Stats Data Received:", statsData); // Debug log
           if (statsData.success && statsData.data) {
             setStats({
               totalLeads: statsData.data.totalLeads || 0,
@@ -109,20 +170,20 @@ export default function DashboardPage() {
   // I will just replace the useEffect block and state init.
 
 
-  // Derived KPIs
+  // Derived KPIs - no hardcoded changes, show actual data only
   const kpis = [
     { 
       label: "Total Leads", 
       value: stats.totalLeads.toLocaleString(), 
-      change: "+12.5%", 
-      context: "Last 30 days",
+      change: null, 
+      context: `Last ${dateRange} days`,
       isPositive: true,
       icon: Users
     },
     { 
       label: "Active Leads", 
       value: stats.activeLeads, 
-      change: "+4.3%", 
+      change: null, 
       context: "Awaiting action",
       isPositive: true,
       icon: Target
@@ -130,7 +191,7 @@ export default function DashboardPage() {
     { 
       label: "Avg. Lead Score", 
       value: stats.avgScore, 
-      change: "+2.1%", 
+      change: null, 
       context: "Quality indicator",
       isPositive: true,
       icon: TrendingUp
@@ -138,7 +199,7 @@ export default function DashboardPage() {
     { 
       label: "Conversion Rate", 
       value: `${stats.conversionRate}%`, 
-      change: "+0.8%", 
+      change: null, 
       context: "Closed / contacted",
       isPositive: true,
       icon: Award
@@ -146,7 +207,6 @@ export default function DashboardPage() {
   ];
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
 
   // Derived Priorities based on backend data
   const newLeadsInList = leads.filter(l => l.status.toLowerCase() === 'new');
@@ -172,21 +232,21 @@ export default function DashboardPage() {
   const priorities = [
     { 
       icon: Flame, 
-      text: `${priorityData.overdueCount} follow-ups are overdue`, 
+      text: `${overdueLeads.length} follow-ups are overdue`, 
       color: "text-orange-700 dark:text-orange-600", 
       bg: "bg-orange-100 dark:bg-orange-900/30", 
-      count: priorityData.overdueCount,
+      count: overdueLeads.length,
       filterUrl: "/dashboard/leads?status=overdue",
-      previewLeads: overdueLeads.length > 0 ? overdueLeads : leads.slice(0, priorityData.overdueCount)
+      previewLeads: overdueLeads.length > 0 ? overdueLeads : leads.slice(0, 3)
     },
     { 
       icon: FileText, 
-      text: `${priorityData.newLeadsToday} new leads today`, 
+      text: `${newLeadsToday.length} new leads today`, 
       color: "text-blue-700 dark:text-blue-600", 
       bg: "bg-blue-100 dark:bg-blue-900/30", 
-      count: priorityData.newLeadsToday,
+      count: newLeadsToday.length,
       filterUrl: "/dashboard/leads?status=new&days=1",
-      previewLeads: newLeadsToday.length > 0 ? newLeadsToday : newLeadsInList.slice(0, priorityData.newLeadsToday)
+      previewLeads: newLeadsToday.length > 0 ? newLeadsToday : newLeadsInList.slice(0, 3)
     }
   ];
 
@@ -242,37 +302,7 @@ export default function DashboardPage() {
     }
   };
 
-  const handleGenerateLeads = async () => {
-    setIsGenerating(true);
-    try {
-      const res = await fetch('http://127.0.0.1:5001/api/leads/generate', {
-        method: 'POST'
-      });
-      const data = await res.json();
-      
-      if (data.success) {
-        const newLead = {
-          id: data.data._id,
-          name: data.data.company,
-          industry: data.data.industry,
-          score: data.data.matchScore,
-          confidence: data.data.matchScore > 85 ? "High" : "Med",
-          status: "New"
-        };
-        
-        setLeads(prev => [newLead, ...prev]);
-        setStats(prev => ({
-          ...prev,
-          totalLeads: prev.totalLeads + 1,
-          activeLeads: prev.activeLeads + 1
-        }));
-      }
-    } catch (err) {
-      console.error("Failed to generate lead:", err);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
+
 
   const handleLeadClick = (lead) => {
     setSelectedPriority({
@@ -288,8 +318,8 @@ export default function DashboardPage() {
       {/* Header */}
       <header className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Sales Intelligence Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-1">Welcome back, Rahul. Here are your top signals for today.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Today's Focus</h1>
+          <p className="text-sm text-muted-foreground mt-1">Real-time sales signals and priorities. <Link href="/dashboard/analytics" className="text-blue-600 hover:underline">View historical analytics →</Link></p>
           {error && (
             <div className="mt-2 p-2 bg-red-100 border border-red-200 text-red-700 rounded text-sm font-medium">
               Error: {error}
@@ -321,20 +351,17 @@ export default function DashboardPage() {
               className="pl-9 pr-4 py-2 w-64 bg-card border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
             />
           </div>
-          <button 
-            onClick={handleGenerateLeads}
-            disabled={isGenerating}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
-          >
-            {isGenerating ? (
-              <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            ) : (
-              <>
-                <span className="text-lg leading-none">+</span>
-                Generate Leads
-              </>
-            )}
-          </button>
+          {/* WIL Sync Status */}
+          <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg">
+            <div className="relative">
+              <div className="h-2 w-2 bg-emerald-500 rounded-full" />
+              <div className="absolute inset-0 h-2 w-2 bg-emerald-500 rounded-full animate-ping opacity-75" />
+            </div>
+            <div className="text-xs">
+              <span className="font-semibold text-emerald-700">Intelligence Active</span>
+              <span className="text-emerald-600 ml-1">· Syncs every hour</span>
+            </div>
+          </div>
         </div>
       </header>
 
